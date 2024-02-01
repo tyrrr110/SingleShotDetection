@@ -35,8 +35,8 @@ def SSD_loss(pred_confidence, pred_box, ann_confidence, ann_box):
     pred_box = pred_box.reshape((-1, pred_box.size(2)))
     ann_box = ann_box.reshape((-1, ann_box.size(2)))
 
-    indices_obj = torch.where(sum(ann_confidence[:]) >= 1)
-    indices_noobj = torch.where(sum(ann_confidence[:]) < 1)
+    indices_obj = torch.where(ann_confidence[:][-1] != 1)
+    indices_noobj = torch.where(sum(ann_confidence[:][-1]) == 1)
 
     #For confidence (class labels), use cross entropy (F.cross_entropy)
     #You can try F.binary_cross_entropy and see which loss is better

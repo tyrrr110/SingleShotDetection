@@ -167,7 +167,8 @@ class COCO(torch.utils.data.Dataset):
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ])
-
+        self.to3chan = transforms.Grayscale(num_output_channels=3)
+        
     def __len__(self):
         return len(self.img_names)
 
@@ -188,7 +189,12 @@ class COCO(torch.utils.data.Dataset):
         #1. prepare the image [3,320,320], by reading image "img_name" first.
         image = Image.open(img_name)
         # ? H, W before resized ?
-        H, W = np.array(image).shape[:-1]
+        if len(np.array(image).shape) > 2:
+            H, W = np.array(image).shape[:-1]
+        else:
+            print(img_name)
+            H, W = np.array(image).shape[:]
+            image = self.to3chan(image)
 
         # TRAIN
         if not self.test:
