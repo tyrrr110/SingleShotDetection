@@ -20,8 +20,12 @@ def visualize_pred(windowname, pred_confidence, pred_box, ann_confidence, ann_bo
     #class_num = 4
     class_num = class_num-1
     #class_num = 3 now, because we do not need the last class (background)
-    
-    image = np.transpose(image_, (1,2,0)).astype(np.uint8)
+    print(image_.shape)
+    print(np.max(image_), np.min(image_))
+    # image = np.transpose(image_, (1,2,0)).astype(np.uint8)
+    image = ((np.transpose(image_, (1,2,0)) + 1) * 127.5).astype(np.uint8)
+    print(np.max(image), np.min(image))
+
     image1 = np.zeros(image.shape,np.uint8)
     image2 = np.zeros(image.shape,np.uint8)
     image3 = np.zeros(image.shape,np.uint8)
@@ -43,11 +47,11 @@ def visualize_pred(windowname, pred_confidence, pred_box, ann_confidence, ann_bo
                 #image1: draw ground truth bounding boxes on image1
                 gt_x, gt_y =  boxs_default[i][2] * ann_box[i][0] + boxs_default[i][0], boxs_default[i][3] * ann_box[i][1] + boxs_default[i][1]
                 gt_w, gt_h = boxs_default[i][2] * np.exp(ann_box[i][2]), boxs_default[i][3] * np.exp(ann_box[i][3])
-                gt_start, gt_end = (gt_x - gt_w/2.0, gt_y - gt_h/2.0), (gt_x + gt_w/2.0, gt_y + gt_h/2.0) #[xmin, ymin, xmax, ymax]
+                gt_start, gt_end = (int((gt_x - gt_w/2.0) * 255), int((gt_y - gt_h/2.0) * 255)), (int((gt_x + gt_w/2.0) * 255), int((gt_y + gt_h/2.0) * 255)) #[xmin, ymin, xmax, ymax]
                 cv2.rectangle(image1, gt_start, gt_end, colors[j], thickness=2)
                 
                 #image2: draw ground truth "default" boxes on image2 (to show that you have assigned the object to the correct cell/cells)
-                cv2.rectangle(image2, (boxs_default[i][4], boxs_default[i][5]), (boxs_default[i][6], boxs_default[i][7]), colors[j], thickness=2)
+                cv2.rectangle(image2, (int(boxs_default[i][4] * 255), int(boxs_default[i][5] * 255)), (int(boxs_default[i][6] * 255), int(boxs_default[i][7] * 255)), colors[j], thickness=2)
                 
                 #you can use cv2.rectangle as follows:
                 #start_point = (x1, y1) #top left corner, x1<x2, y1<y2
@@ -63,11 +67,11 @@ def visualize_pred(windowname, pred_confidence, pred_box, ann_confidence, ann_bo
                 #image3: draw network-predicted bounding boxes on image3
                 pred_x, pred_y =  boxs_default[i][2] * pred_box[i][0] + boxs_default[i][0], boxs_default[i][3] * pred_box[i][1] + boxs_default[i][1]
                 pred_w, pred_h = boxs_default[i][2] * np.exp(pred_box[i][2]), boxs_default[i][3] * np.exp(pred_box[i][3])
-                pred_start, pred_end = (pred_x - pred_w/2.0, pred_y - pred_h/2.0), (pred_x + pred_w/2.0, pred_y + pred_h/2.0) #[xmin, ymin, xmax, ymax]
+                pred_start, pred_end = (int((pred_x - pred_w/2.0) * 255), int((pred_y - pred_h/2.0) * 255)), (int((pred_x + pred_w/2.0) * 255), int((pred_y + pred_h/2.0) * 255)) #[xmin, ymin, xmax, ymax]
                 cv2.rectangle(image3, pred_start, pred_end, colors[j], thickness=2)
 
                 #image4: draw network-predicted "default" boxes on image4 (to show which cell does your network think that contains an object)
-                cv2.rectangle(image4, (boxs_default[i][4], boxs_default[i][5]), (boxs_default[i][6], boxs_default[i][7]), colors[j], thickness=2)
+                cv2.rectangle(image4, (int(boxs_default[i][4] * 255), int(boxs_default[i][5] * 255)), (int(boxs_default[i][6] * 255), int(boxs_default[i][7] * 255)), colors[j], thickness=2)
     
     #combine four images into one
     h,w,_ = image1.shape
@@ -76,11 +80,12 @@ def visualize_pred(windowname, pred_confidence, pred_box, ann_confidence, ann_bo
     image[:h,w:] = image2
     image[h:,:w] = image3
     image[h:,w:] = image4
-    cv2.imshow(windowname+" [[gt_box,gt_dft],[pd_box,pd_dft]]",image)
-    cv2.waitKey(1)
+    # cv2.imshow(windowname+" [[gt_box,gt_dft],[pd_box,pd_dft]]",image)
+    # cv2.waitKey(1)
+
     #if you are using a server, you may not be able to display the image.
     #in that case, please save the image using cv2.imwrite and check the saved image for visualization.
-
+    cv2.imwrite(windowname+".png",image)
 
 
 def non_maximum_suppression(confidence_, box_, boxs_default, overlap=0.5, threshold=0.5):

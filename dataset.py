@@ -160,10 +160,11 @@ class COCO(torch.utils.data.Dataset):
         ])
 
         self.augmentation_transform = transforms.Compose([
-            transforms.RandomRotation(20), # p = 20%
+            # transforms.RandomRotation(20), # p = 20%
             transforms.RandomHorizontalFlip(),
-            transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
-            transforms.RandomResizedCrop((320, 320), scale=(0.1, 0.5), ratio=(0.75, 1.25)),
+            # transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
+            # transforms.RandomResizedCrop((320, 320), scale=(0.1, 0.5), ratio=(0.75, 1.25)),
+            transforms.Resize((320, 320)),
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ])
@@ -192,7 +193,6 @@ class COCO(torch.utils.data.Dataset):
         if len(np.array(image).shape) > 2:
             H, W = np.array(image).shape[:-1]
         else:
-            print(img_name)
             H, W = np.array(image).shape[:]
             image = self.to3chan(image)
 
@@ -227,4 +227,5 @@ class COCO(torch.utils.data.Dataset):
         #note: please make sure x_min,y_min,x_max,y_max are normalized with respect to the width or height of the image.
         #For example, point (x=100, y=200) in a image with (width=1000, height=500) will be normalized to (x/width=0.1,y/height=0.4)
         
+        # print(torch.max(image), torch.min(image))
         return image, ann_box, ann_confidence
