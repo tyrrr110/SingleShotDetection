@@ -1,6 +1,7 @@
 import numpy as np
 import cv2
 from dataset import iou
+import copy
 
 
 colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255)]
@@ -87,19 +88,45 @@ def visualize_pred(windowname, pred_confidence, pred_box, ann_confidence, ann_bo
 
 
 def non_maximum_suppression(confidence_, box_, boxs_default, overlap=0.5, threshold=0.5):
-    #TODO: non maximum suppression
     #input:
     #confidence_  -- the predicted class labels from SSD, [num_of_boxes, num_of_classes]
     #box_         -- the predicted bounding boxes from SSD, [num_of_boxes, 4]
     #boxs_default -- default bounding boxes, [num_of_boxes, 8]
     #overlap      -- if two bounding boxes in the same class have iou > overlap, then one of the boxes must be suppressed
-    #threshold    -- if one class in one cell has confidence > threshold, then consider this cell carrying a bounding box with this class.
-    
+    #threshold    -- if one class in one cell has confidence > threshold, then consider this cell carrying a bounding box with this class.    
+    non_suppressed_boxes = set()
+    confidence_suppressed = copy.deepcopy(confidence_)
+    # boxes_to_check = list(range(len(box_))) # indices of predicted boxes
+    while True:
+        # bounding box in to_check list with the highest probability in class cat, dog or person
+        high_prob_boxes = np.argmax(confidence_, axis=0)[:-1]
+        if confidence_[high_prob_boxes[0],0] < threshold and confidence_[high_prob_boxes[1],1] < threshold and confidence_[high_prob_boxes[2],2] < threshold:
+            break
+        for j, i in enumerate(high_prob_boxes):
+            if confidence_[i][j] > threshold:
+                non_suppressed_boxes.add(i)
+                confidence_[i][j] = 0
+                i_box = box_[i] #[(center)tx,ty, tw,th]
+                # boxes_to_check.remove(i)
+
+                # select boxes with high IOU with i_box
+                ious = iou(box_, i_box[0], i_box[1], i_box[2], i_box[3])
+                ious = ious > overlap
+                for o in range(len(ious)):
+                    if ious[o]:
+                        non_suppressed_boxes.add(o)
+                        # if o in boxes_to_check:
+                        #     boxes_to_check.remove(o)
+
     #output:
     #depends on your implementation.
     #if you wish to reuse the visualize_pred function above, you need to return a "suppressed" version of confidence [5,5, num_of_classes].
     #you can also directly return the final bounding boxes and classes, and write a new visualization function for that.
-    pass
+    for i in range(len(confidence_suppressed)):
+        if i not in non_suppressed_boxes:
+            confidence_suppressed[i][:] = [0, 0, 0, 1]
+    return confidence_suppressed
+
 
 def generate_mAP():
     #TODO: Generate mAP

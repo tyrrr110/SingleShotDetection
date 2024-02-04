@@ -82,7 +82,8 @@ def main():
             #visualize
             pred_confidence_ = pred_confidence[0].detach().cpu().numpy()
             pred_box_ = pred_box[0].detach().cpu().numpy()
-            visualize_pred(f"train_{epoch}", pred_confidence_, pred_box_, ann_confidence_[0].numpy(), ann_box_[0].numpy(), images_[0].numpy(), boxs_default)
+            nms_confidence = non_maximum_suppression(pred_confidence_, pred_box_, boxs_default)
+            visualize_pred(f"train_{epoch}", nms_confidence, pred_box_, ann_confidence_[0].numpy(), ann_box_[0].numpy(), images_[0].numpy(), boxs_default)
             
             
             #VALIDATION
@@ -108,7 +109,8 @@ def main():
             #visualize
             pred_confidence_ = pred_confidence[0].detach().cpu().numpy()
             pred_box_ = pred_box[0].detach().cpu().numpy()
-            visualize_pred(f"val_{epoch}", pred_confidence_, pred_box_, ann_confidence_[0].numpy(), ann_box_[0].numpy(), images_[0].numpy(), boxs_default)
+            nms_confidence = non_maximum_suppression(pred_confidence_, pred_box_, boxs_default)
+            visualize_pred(f"val_{epoch}", nms_confidence, pred_box_, ann_confidence_[0].numpy(), ann_box_[0].numpy(), images_[0].numpy(), boxs_default)
             
             #optional: compute F1
             #F1score = 2*precision*recall/np.maximum(precision+recall,1e-8)
@@ -144,8 +146,9 @@ def main():
             #save predicted bounding boxes and classes to a txt file.
             #you will need to submit those files for grading this assignment
             save_results_to_txt('result.txt', pred_confidence_, pred_box_)
-            
-            visualize_pred(f"test_{i}", pred_confidence_, pred_box_, ann_confidence_[0].numpy(), ann_box_[0].numpy(), images_[0].numpy(), boxs_default)
+
+            nms_confidence = non_maximum_suppression(pred_confidence_, pred_box_, boxs_default)
+            visualize_pred(f"test_{i}", nms_confidence, pred_box_, ann_confidence_[0].numpy(), ann_box_[0].numpy(), images_[0].numpy(), boxs_default)
             cv2.waitKey(1000)
 
 def save_results_to_txt(file_path, pred_confidence, pred_box, threshold=0.5):
