@@ -172,7 +172,7 @@ class COCO(torch.utils.data.Dataset):
 
         self.augmentation_transform = transforms.Compose([
             # transforms.RandomRotation(20), # p = 20%
-            transforms.RandomHorizontalFlip(),
+            # transforms.RandomHorizontalFlip(),
             # transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
             # transforms.RandomResizedCrop((320, 320), scale=(0.1, 0.5), ratio=(0.75, 1.25)),
             transforms.Resize((320, 320)),
