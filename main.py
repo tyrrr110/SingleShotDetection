@@ -82,8 +82,8 @@ def main():
             #visualize
             pred_confidence_ = pred_confidence[0].detach().cpu().numpy()
             pred_box_ = pred_box[0].detach().cpu().numpy()
-            nms_confidence = non_maximum_suppression(pred_confidence_, pred_box_, boxs_default)
-            visualize_pred(f"train_{epoch}", nms_confidence, pred_box_, ann_confidence_[0].numpy(), ann_box_[0].numpy(), images_[0].numpy(), boxs_default)
+            pred_confidence_ = non_maximum_suppression(pred_confidence_, pred_box_, boxs_default)
+            visualize_pred(f"train_{epoch}", pred_confidence_, pred_box_, ann_confidence_[0].numpy(), ann_box_[0].numpy(), images_[0].numpy(), boxs_default)
             
             
             #VALIDATION
@@ -92,6 +92,8 @@ def main():
             # split the dataset into 90% training and 10% validation
             # use the training set to train and the validation set to evaluate
             
+            avg_loss = 0
+            avg_count = 0
             for i, data in enumerate(dataloader_test, 0):
                 images_, ann_box_, ann_confidence_ = data
                 images = images_.cuda()
@@ -99,18 +101,31 @@ def main():
                 ann_confidence = ann_confidence_.cuda()
 
                 pred_confidence, pred_box = network(images)
+                loss_net = SSD_loss(pred_confidence, pred_box, ann_confidence, ann_box)
+
+                avg_loss += loss_net.data
+                avg_count += 1
                 
                 pred_confidence_ = pred_confidence.detach().cpu().numpy()
                 pred_box_ = pred_box.detach().cpu().numpy()
-                
+
                 #optional: implement a function to accumulate precision and recall to compute mAP or F1.
                 #update_precision_recall(pred_confidence_, pred_box_, ann_confidence_.numpy(), ann_box_.numpy(), boxs_default,precision_,recall_,thres)
             
+            print('[%d] time: %f validation loss: %f' % (epoch, time.time()-start_time, avg_loss/avg_count))
+
             #visualize
             pred_confidence_ = pred_confidence[0].detach().cpu().numpy()
             pred_box_ = pred_box[0].detach().cpu().numpy()
-            nms_confidence = non_maximum_suppression(pred_confidence_, pred_box_, boxs_default)
-            visualize_pred(f"val_{epoch}", nms_confidence, pred_box_, ann_confidence_[0].numpy(), ann_box_[0].numpy(), images_[0].numpy(), boxs_default)
+            with open("debugging_pred_box", "a") as f:
+                cat_ids = np.argmax(pred_confidence_[:], axis=1)
+                for i in range(len(cat_ids)):
+                    prob = pred_confidence_[i][cat_ids[i]]
+                    if prob > 0.5 and cat_ids[i] != 3:
+                        f.write(f"[{i} {cat_ids[i]}]: {prob}\n")
+
+            pred_confidence_ = non_maximum_suppression(pred_confidence_, pred_box_, boxs_default)
+            visualize_pred(f"val_{epoch}", pred_confidence_, pred_box_, ann_confidence_[0].numpy(), ann_box_[0].numpy(), images_[0].numpy(), boxs_default)
             
             #optional: compute F1
             #F1score = 2*precision*recall/np.maximum(precision+recall,1e-8)
@@ -141,14 +156,14 @@ def main():
             pred_confidence_ = pred_confidence[0].detach().cpu().numpy()
             pred_box_ = pred_box[0].detach().cpu().numpy()
             
-            #pred_confidence_,pred_box_ = non_maximum_suppression(pred_confidence_,pred_box_,boxs_default)
+            # pred_confidence_,pred_box_ = non_maximum_suppression(pred_confidence_,pred_box_,boxs_default)
             
             #save predicted bounding boxes and classes to a txt file.
             #you will need to submit those files for grading this assignment
             save_results_to_txt('result.txt', pred_confidence_, pred_box_)
 
-            nms_confidence = non_maximum_suppression(pred_confidence_, pred_box_, boxs_default)
-            visualize_pred(f"test_{i}", nms_confidence, pred_box_, ann_confidence_[0].numpy(), ann_box_[0].numpy(), images_[0].numpy(), boxs_default)
+            pred_confidence_ = non_maximum_suppression(pred_confidence_, pred_box_, boxs_default)
+            visualize_pred(f"test_{i}", pred_confidence_, pred_box_, ann_confidence_[0].numpy(), ann_box_[0].numpy(), images_[0].numpy(), boxs_default)
             cv2.waitKey(1000)
 
 def save_results_to_txt(file_path, pred_confidence, pred_box, threshold=0.5):

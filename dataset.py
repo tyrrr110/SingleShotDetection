@@ -83,14 +83,14 @@ def iou(boxs_default, x_min,y_min,x_max,y_max):
     #output:
     #ious between the "boxes" and the "another box": [iou(box_1,box_r), iou(box_2,box_r), ...], shape = [num_of_boxes]
     
-    if boxs_default.shape[-1] == 4:
-        boxs_default = np.append(boxs_default, np.zeros((len(boxs_default),4)), axis=1)
-        for i, box in enumerate(boxs_default):
-            xmin_, ymin_, xmax_, ymax_ = box[0] - box[2]/2.0, box[1] - box[3]/2.0, box[0] + box[2]/2.0, box[1] + box[3]/2.0
-            boxs_default[i][4:] = [xmin_, ymin_, xmax_, ymax_]
-        # correct box_r coordinates
-        x_min_, y_min_, x_max_, y_max_ = x_min - x_max/2.0, y_min - y_max/2.0, x_min + x_max/2.0, y_min + y_max/2.0
-        x_min, y_min, x_max, y_max = x_min_, y_min_, x_max_, y_max_
+    # if boxs_default.shape[-1] == 4:
+    #     boxs_default = np.append(boxs_default, np.zeros((len(boxs_default),4)), axis=1)
+    #     for i, box in enumerate(boxs_default):
+    #         xmin_, ymin_, xmax_, ymax_ = box[0] - box[2]/2.0, box[1] - box[3]/2.0, box[0] + box[2]/2.0, box[1] + box[3]/2.0
+    #         boxs_default[i][4:] = [xmin_, ymin_, xmax_, ymax_]
+    #     # correct box_r coordinates
+    #     x_min_, y_min_, x_max_, y_max_ = x_min - x_max/2.0, y_min - y_max/2.0, x_min + x_max/2.0, y_min + y_max/2.0
+    #     x_min, y_min, x_max, y_max = x_min_, y_min_, x_max_, y_max_
 
     inter = np.maximum(np.minimum(boxs_default[:,6],x_max)-np.maximum(boxs_default[:,4],x_min),0)*np.maximum(np.minimum(boxs_default[:,7],y_max)-np.maximum(boxs_default[:,5],y_min),0)
     area_a = (boxs_default[:,6]-boxs_default[:,4])*(boxs_default[:,7]-boxs_default[:,5])
@@ -173,7 +173,7 @@ class COCO(torch.utils.data.Dataset):
         self.augmentation_transform = transforms.Compose([
             # transforms.RandomRotation(20), # p = 20%
             # transforms.RandomHorizontalFlip(),
-            # transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
+            transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
             # transforms.RandomResizedCrop((320, 320), scale=(0.1, 0.5), ratio=(0.75, 1.25)),
             transforms.Resize((320, 320)),
             transforms.ToTensor(),

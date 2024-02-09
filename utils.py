@@ -2,7 +2,8 @@ import numpy as np
 import cv2
 from dataset import iou
 import copy
-
+from sklearn.metrics import precision_recall_curve, average_precision_score
+import torch
 
 colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255)]
 #use [blue green red] to represent different classes
@@ -87,16 +88,28 @@ def visualize_pred(windowname, pred_confidence, pred_box, ann_confidence, ann_bo
     cv2.imwrite(windowname+".png",image)
 
 
-def non_maximum_suppression(confidence_, box_, boxs_default, overlap=0.5, threshold=0.5):
+def non_maximum_suppression(confidence_, box_, boxs_default, overlap=0.3, threshold=0.6):
     #input:
     #confidence_  -- the predicted class labels from SSD, [num_of_boxes, num_of_classes]
     #box_         -- the predicted bounding boxes from SSD, [num_of_boxes, 4]
     #boxs_default -- default bounding boxes, [num_of_boxes, 8]
     #overlap      -- if two bounding boxes in the same class have iou > overlap, then one of the boxes must be suppressed
     #threshold    -- if one class in one cell has confidence > threshold, then consider this cell carrying a bounding box with this class.    
+    
+    abs_box = np.zeros((len(box_),8))
+    px, py, pw, ph = boxs_default[:,0], boxs_default[:,1], boxs_default[:,2], boxs_default[:,3]
+    #convert box_ to absolute box_
+    abs_box[:,0] = box_[:,0]*pw + px
+    abs_box[:,1] = box_[:,1]*ph + py
+    abs_box[:,2] = pw*np.exp(box_[:,2])
+    abs_box[:,3] = ph*np.exp(box_[:,3])
+    abs_box[:,4] = abs_box[:,0] - abs_box[:,2]/2.0   # min_x
+    abs_box[:,5] = abs_box[:,1] - abs_box[:,3]/2.0   # min_y
+    abs_box[:,6] = abs_box[:,0] + abs_box[:,2]/2.0   # min_x
+    abs_box[:,7] = abs_box[:,1] + abs_box[:,3]/2.0   # min_y
+    
     non_suppressed_boxes = set()
     confidence_suppressed = copy.deepcopy(confidence_)
-    # boxes_to_check = list(range(len(box_))) # indices of predicted boxes
     while True:
         # bounding box in to_check list with the highest probability in class cat, dog or person
         high_prob_boxes = np.argmax(confidence_, axis=0)[:-1]
@@ -106,17 +119,14 @@ def non_maximum_suppression(confidence_, box_, boxs_default, overlap=0.5, thresh
             if confidence_[i][j] > threshold:
                 non_suppressed_boxes.add(i)
                 confidence_[i][j] = 0
-                i_box = box_[i] #[(center)tx,ty, tw,th]
-                # boxes_to_check.remove(i)
+                i_box = abs_box[i]
 
-                # select boxes with high IOU with i_box
-                ious = iou(box_, i_box[0], i_box[1], i_box[2], i_box[3])
+                # suppress boxes with high IOU with i_box
+                ious = iou(abs_box, i_box[4], i_box[5], i_box[6], i_box[7])
                 ious = ious > overlap
                 for o in range(len(ious)):
                     if ious[o]:
-                        non_suppressed_boxes.add(o)
-                        # if o in boxes_to_check:
-                        #     boxes_to_check.remove(o)
+                        confidence_[o][:] = [0, 0, 0, 1]       
 
     #output:
     #depends on your implementation.
@@ -125,17 +135,66 @@ def non_maximum_suppression(confidence_, box_, boxs_default, overlap=0.5, thresh
     for i in range(len(confidence_suppressed)):
         if i not in non_suppressed_boxes:
             confidence_suppressed[i][:] = [0, 0, 0, 1]
+    with open("debugging_nms", "a") as f:
+        idx = list(non_suppressed_boxes)
+        f.write(np.array_str(confidence_suppressed[idx]))
+
+    with open("nms_box", "a") as f:
+        idx = list(non_suppressed_boxes)
+        f.write(np.array_str(abs_box[idx]))
+
     return confidence_suppressed
 
 
-def generate_mAP():
-    #TODO: Generate mAP
-    pass
+def generate_mAP(pred_confidence, pred_box, ann_confidence, ann_box, image_, num_classes=4, class_names=["cat", "dog", "person", "background"]):
+    #input:
+    #- pred_confidence: Predicted class labels from SSD, [num_of_boxes, num_classes]
+    #- pred_box: Predicted bounding boxes from SSD, [num_of_boxes, 4]
+    #- ann_confidence: Ground truth class labels, [num_of_boxes, num_classes]
+    # - ann_box: Ground truth bounding boxes, [num_of_boxes, 4]
+    # - image_: Input image to the network
+    # - num_classes: Number of classes (including background).
+    # - class_names: List of class names (optional, used for plotting).
 
+    # Returns:
+    # - mAP: Mean Average Precision.
+    precision_list = []
+    recall_list = []
+    average_precision_list = []
 
+    for class_index in range(num_classes-1):  # excludes background class
+        true_class = ann_confidence[:, class_index]
+        pred_scores_class = pred_confidence[:, class_index]
+        pred_boxes_class = pred_box[:, class_index * 4: (class_index + 1) * 4]
 
+        # Compute precision-recall curve
+        precision, recall, _ = precision_recall_curve(true_class, pred_scores_class)
 
+        # Compute average precision
+        ap = average_precision_score(true_class, pred_scores_class)
 
+        # Store precision, recall, and average precision for the current class
+        precision_list.append(precision)
+        recall_list.append(recall)
+        average_precision_list.append(ap)
 
+        # Plot precision-recall curve for the current class
+        if class_names is not None:
+            plt.plot(recall, precision, label=f"{class_names[class_index]} (AP = {ap:.2f})")
+        else:
+            plt.plot(recall, precision, label=f"Class {class_index} (AP = {ap:.2f})")
 
+    # Compute mAP as the mean of average precision across all classes
+    mAP = np.mean(average_precision_list)
 
+    # Plot settings
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.title('Precision-Recall Curve')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    print(f"Mean Average Precision (mAP): {mAP:.4f}")
+
+    return mAP

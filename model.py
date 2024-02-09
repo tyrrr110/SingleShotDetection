@@ -30,144 +30,165 @@ def SSD_loss(pred_confidence, pred_box, ann_confidence, ann_box):
     #Then you need to figure out how you can get the indices of all cells carrying objects,
     #and use confidence[indices], box[indices] to select those cells.
 
-    pred_confidence = pred_confidence.reshape((-1, pred_confidence.size(2)))
-    ann_confidence = ann_confidence.reshape((-1, ann_confidence.size(2)))
-    pred_box = pred_box.reshape((-1, pred_box.size(2)))
-    ann_box = ann_box.reshape((-1, ann_box.size(2)))
+    B, num_box, num_cat = pred_confidence.shape
+    pred_confidence = pred_confidence.reshape((B * num_box, num_cat))
+    ann_confidence = ann_confidence.reshape((B * num_box, num_cat))
+    pred_box = pred_box.reshape((B * num_box, 4))
+    ann_box = ann_box.reshape((B * num_box, 4))
 
-    indices_obj = torch.where(ann_confidence[:][-1] != 1)
-    indices_noobj = torch.where(sum(ann_confidence[:][-1]) == 1)
+    indices_obj = torch.where(ann_confidence[:, -1] != 1)
+    indices_noobj = torch.where(ann_confidence[:, -1] == 1)
+
+    obj_ann_conf = ann_confidence[indices_obj]
+    obj_pred_conf = pred_confidence[indices_obj]
+    obj_ann_box = ann_box[indices_obj]
+    obj_pred_box = pred_box[indices_obj]
+    noobj_ann_conf = ann_confidence[indices_noobj]
+    noobj_pred_conf = pred_confidence[indices_noobj]    
 
     #For confidence (class labels), use cross entropy (F.cross_entropy)
     #You can try F.binary_cross_entropy and see which loss is better
-    L_cls = F.cross_entropy(pred_confidence[indices_obj], target=ann_confidence[indices_obj])
-    L_cls += 3 * F.cross_entropy(pred_confidence[indices_noobj], target=ann_confidence[indices_noobj])
+    L_cls = F.cross_entropy(obj_pred_conf, target=obj_ann_conf) 
+    L_cls += 3 * F.cross_entropy(noobj_pred_conf, target=noobj_ann_conf)
 
     #For box (bounding boxes), use smooth L1 (F.smooth_l1_loss)
-    L_box = F.smooth_l1_loss(pred_box[indices_obj], target=ann_box[indices_obj])
+    L_box = F.smooth_l1_loss(obj_pred_box, target=obj_ann_box)
     return L_cls + L_box
-
-
-class nonParallelBlock(nn.Module):
-    def __init__(self, cin, cout):
-        super(nonParallelBlock, self).__init__()
-        self.layers1 = nn.Sequential(
-            nn.Conv2d(cin, cout, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(cout),
-            nn.ReLU()
-        )
-        self.layers2 = nn.Sequential(
-            nn.Conv2d(cout, cout, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(cout),
-            nn.ReLU()
-        )
-
-    def forward(self, x):
-        x = self.layers1(x)
-        x = self.layers2(x)
-        x = self.layers2(x)
-        return x
-    
-
-class nonParallelStep(nn.Module):
-    def __init__(self, channels=(3, 64, 128, 256, 512)):
-        super(nonParallelStep, self).__init__()
-
-        self.nonParallelBlocks = nn.ModuleList(
-            [nonParallelBlock(channels[i], channels[i+1])
-                for i in range(len(channels)-1)])
-        
-        self.lastBlock = nn.Sequential(
-            nn.Conv2d(channels[-1], channels[-2], kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(channels[-2]),
-            nn.ReLU()
-        )
-
-    def forward(self, x):
-        for block in self.nonParallelBlocks:
-            x = block(x)
-        x = self.lastBlock(x)
-        return x    
+  
 
 class SSD(nn.Module):
 
-    def __init__(self, class_num = 4):
+    def __init__(self, class_num):
         super(SSD, self).__init__()
-        self.class_num = class_num #num_of_classes, in this assignment, 4: cat, dog, person, background
-        
-        self.nonParallelStep = nonParallelStep()
-        self.conv1x1 = nn.Sequential(
-            nn.Conv2d(256, 256, kernel_size=1, stride=1, padding=0),
+
+        self.class_num = class_num
+
+        self.conv_layers_1 = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=3, stride=2, padding=1, bias=True),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1, bias=True),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+        )  
+
+        self.conv_layers_2 = nn.Sequential(
+            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1, bias=True),
             nn.BatchNorm2d(256),
-            nn.ReLU()
+            nn.ReLU(),
         )
-        self.conv10to5 = nn.Sequential(
-            nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=1),
+
+        self.conv_layers_3 = nn.Sequential(
+            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1, bias=True),
             nn.BatchNorm2d(256),
-            nn.ReLU()
-        )
-        self.conv5to3 = nn.Sequential(
-            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1, bias=True),
             nn.BatchNorm2d(256),
-            nn.ReLU()
+            nn.ReLU(),
+            nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1, bias=True),
+            nn.BatchNorm2d(512),
+            nn.ReLU(),
         )
-        self.conv3to1 = nn.Sequential(
-            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=0),
+
+        self.conv_layers_4 = nn.Sequential(
+            nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.BatchNorm2d(512),
+            nn.ReLU(),
+            nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.BatchNorm2d(512),
+            nn.ReLU(),
+            nn.Conv2d(512, 256, kernel_size=3, stride=2, padding=1, bias=True),
             nn.BatchNorm2d(256),
-            nn.ReLU()
+            nn.ReLU(),
         )
-        self.conv_dim_reduce = nn.Conv2d(256, 16, kernel_size=1, stride=1, padding=0)
-        self.br_conv_dim_reduce = nn.Conv2d(256, 16, kernel_size=3, stride=1, padding=1)
-        
+
+        self.conv_res5 = nn.Sequential(
+            nn.Conv2d(256, 256, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=1, bias=True),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+        )
+
+        self.conv_res3 = nn.Sequential(
+            nn.Conv2d(256, 256, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=0, bias=True),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+        )
+
+        self.conv_res1 = nn.Sequential(
+            nn.Conv2d(256, 256, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=0, bias=True),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+        )
+
+        self.conv_res10_o1 = nn.Conv2d(256, 16, kernel_size=3, stride=1, padding=1, bias=True)
+        self.conv_res10_o2 = nn.Conv2d(256, 16, kernel_size=3, stride=1, padding=1, bias=True)
+
+        self.conv_res5_o1 = nn.Conv2d(256, 16, kernel_size=3, stride=1, padding=1, bias=True)
+        self.conv_res5_o2 = nn.Conv2d(256, 16, kernel_size=3, stride=1, padding=1, bias=True)
+
+        self.conv_res3_o1 = nn.Conv2d(256, 16, kernel_size=3, stride=1, padding=1, bias=True)
+        self.conv_res3_o2 = nn.Conv2d(256, 16, kernel_size=3, stride=1, padding=1, bias=True)
+
+        self.conv_res1_o1 = nn.Conv2d(256, 16, kernel_size=1, stride=1, padding=0, bias=True)
+        self.conv_res1_o2 = nn.Conv2d(256, 16, kernel_size=1, stride=1, padding=0, bias=True)
+
     def forward(self, x):
-        #input:
-        #x -- images, [batch_size, 3, 320, 320]
-        # x = x/255.0 #normalize image. If you already normalized your input image in the dataloader, remove this line.
-        
-        x = self.nonParallelStep(x)
-        out_bbox = []
-        out_conf = []
+        x = self.conv_layers_1(x)
+        x = self.conv_layers_2(x)
+        x = self.conv_layers_3(x)
 
-        out_10_bbox = self.br_conv_dim_reduce(x)
-        out_bbox.append(out_10_bbox.reshape((out_10_bbox.size(0), out_10_bbox.size(1), -1)))
-        out_10_conf = self.br_conv_dim_reduce(x)
-        out_conf.append(out_10_conf.reshape((out_10_conf.size(0), out_10_conf.size(1), -1)))
+        res10 = self.conv_layers_4(x)
+        res5 = self.conv_res5(res10)
+        res3 = self.conv_res3(res5)
+        res1 = self.conv_res1(res3)
 
-        x = self.conv1x1(x)
-        x = self.conv10to5(x)
+        B, _, H, W = res10.shape
+        res10_o1 = self.conv_res10_o1(res10).view(B, 16, H*W)
+        res10_o2 = self.conv_res10_o2(res10).view(B, 16, H*W)
 
-        out_5_bbox = self.br_conv_dim_reduce(x)
-        out_bbox.append(out_5_bbox.reshape((out_5_bbox.size(0), out_5_bbox.size(1), -1)))
-        out_5_conf = self.br_conv_dim_reduce(x)
-        out_conf.append(out_5_conf.reshape((out_5_conf.size(0), out_5_conf.size(1), -1)))
+        B, _, H, W = res5.shape
+        res5_o1 = self.conv_res5_o1(res5).view(B, 16, H*W)
+        res5_o2 = self.conv_res5_o2(res5).view(B, 16, H*W)
 
-        x = self.conv1x1(x)
-        x = self.conv5to3(x)
+        B, _, H, W = res3.shape
+        res3_o1 = self.conv_res3_o1(res3)
+        res3_o1 = res3_o1.view(B, 16, H*W)
+        res3_o2 = self.conv_res3_o2(res3).view(B, 16, H*W)
 
-        out_3_bbox = self.br_conv_dim_reduce(x)
-        out_bbox.append(out_3_bbox.reshape((out_3_bbox.size(0), out_3_bbox.size(1), -1)))
-        out_3_conf = self.br_conv_dim_reduce(x)
-        out_conf.append(out_3_conf.reshape((out_3_conf.size(0), out_3_conf.size(1), -1)))
+        B, _, H, W = res1.shape
+        res1_o1 = self.conv_res1_o1(res1).view(B, 16, H*W)
+        res1_o2 = self.conv_res1_o2(res1).view(B, 16, H*W)
 
-        x = self.conv1x1(x)
-        x = self.conv3to1(x)
+        out_bbox = torch.concat([res10_o1, res5_o1, res3_o1, res1_o1], axis=2)
+        B, _, _ = out_bbox.shape
+        out_bbox = out_bbox.permute(0, 2, 1)
+        bboxes = out_bbox.reshape((B, 540, 4))
 
-        out_1_bbox = self.conv_dim_reduce(x)
-        out_bbox.append(out_1_bbox.reshape((out_1_bbox.size(0), out_1_bbox.size(1), -1)))
-        out_1_conf = self.conv_dim_reduce(x)
-        out_conf.append(out_1_conf.reshape((out_1_conf.size(0), out_1_conf.size(1), -1)))
-
-        # concat
-        bboxes = torch.cat(out_bbox, dim=2)
-        bboxes = bboxes.permute(0,2,1).reshape(bboxes.size(0), -1, self.class_num)
-        confidence = torch.cat(out_conf, dim=2)
-        confidence = confidence.permute(0,2,1).reshape(confidence.size(0), -1, self.class_num)
-
-        #should you apply softmax to confidence? (search the pytorch tutorial for F.cross_entropy.) If yes, which dimension should you apply softmax?
-        confidence = torch.softmax(confidence, dim=2)
-
-        #sanity check: print the size/shape of the confidence and bboxes, make sure they are as follows:
-        #confidence - [batch_size,4*(10*10+5*5+3*3+1*1),num_of_classes]
-        #bboxes - [batch_size,4*(10*10+5*5+3*3+1*1),4]
+        out_conf = torch.concat([res10_o2, res5_o2, res3_o2, res1_o2], axis=2)
+        B, _, _ = out_conf.shape
+        out_conf = out_conf.permute(0, 2, 1)
+        out_conf = out_conf.reshape((B, 540, 4))
+        confidence = torch.softmax(out_conf, dim=2)
         
         return confidence,bboxes
